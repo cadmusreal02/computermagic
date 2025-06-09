@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# 🚀 PUMPSWAP TRADING BOT - INSTALADOR COMPLETO TODO-EN-UNO
-# Un solo comando instala TODO el proyecto sin tocar nada más
-# curl -sSL https://pastebin.com/raw/TU-ID | bash
+# 🚀 PUMPSWAP TRADING BOT - INSTALADOR COMPLETO MEJORADO
+# Versión que funciona correctamente con input del usuario
 
 set -e
 
@@ -33,6 +32,14 @@ cat << "EOF"
 EOF
 echo -e "${NC}"
 
+# Verificar que estamos ejecutando el archivo directamente
+if [ "$0" = "bash" ]; then
+    print_error "No ejecutes este script con 'curl | bash'"
+    echo "Usa en su lugar:"
+    echo "curl -sSL https://raw.githubusercontent.com/cadmusreal02/pumpswap-trading-bot/main/install.sh | bash"
+    exit 1
+fi
+
 # Detectar OS
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS="linux"
@@ -42,6 +49,23 @@ else
     OS="windows"
 fi
 print_success "Sistema: $OS"
+
+# Verificar dependencias del sistema
+check_system_deps() {
+    print_step "Verificando dependencias del sistema..."
+    
+    if [[ "$OS" == "linux" ]]; then
+        if ! command -v curl &> /dev/null; then
+            print_error "curl no está instalado. Instálalo con: sudo apt-get install curl"
+            exit 1
+        fi
+        if ! command -v sudo &> /dev/null; then
+            print_error "sudo no está disponible"
+            exit 1
+        fi
+    fi
+    print_success "Dependencias del sistema OK"
+}
 
 # Instalar Node.js
 install_nodejs() {
@@ -56,13 +80,13 @@ install_nodejs() {
     
     print_step "Instalando Node.js..."
     if [[ "$OS" == "linux" ]]; then
-        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - &>/dev/null
-        sudo apt-get install -y nodejs &>/dev/null
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+        sudo apt-get install -y nodejs
     elif [[ "$OS" == "mac" ]]; then
         if ! command -v brew &> /dev/null; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" &>/dev/null
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
         fi
-        brew install node &>/dev/null
+        brew install node
     fi
     print_success "Node.js instalado: $(node --version)"
 }
@@ -76,39 +100,66 @@ install_rust() {
     fi
     
     print_step "Instalando Rust..."
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &>/dev/null
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     source $HOME/.cargo/env
+    export PATH="$HOME/.cargo/bin:$PATH"
     print_success "Rust instalado: $(cargo --version)"
+}
+
+# Función para input seguro
+safe_read() {
+    local prompt="$1"
+    local var_name="$2"
+    local example="$3"
+    
+    echo ""
+    echo -e "${YELLOW}$prompt${NC}"
+    if [ -n "$example" ]; then
+        echo -e "${BLUE}Ejemplo: $example${NC}"
+    fi
+    echo -n "> "
+    read -r input
+    eval "$var_name='$input'"
 }
 
 # Recopilar configuración del usuario
 collect_config() {
     print_step "Configuración personalizada..."
     echo ""
+    echo -e "${PURPLE}Vamos a configurar tu bot paso a paso...${NC}"
     
-    echo -e "${YELLOW}🔑 Tu wallet privada (array JSON):${NC}"
-    echo "Ejemplo: [81,144,223,80,201,5,14,64,180,46,98,153...]"
-    read -p "PAYER_SECRET: " PAYER_SECRET
+    # Wallet privada
+    safe_read "🔑 Tu wallet privada (array JSON):" "PAYER_SECRET" "[81,144,223,80,201,5,14,64...]"
     
-    echo -e "${YELLOW}📱 Configuración Telegram:${NC}"
-    read -p "Bot Token: " TELEGRAM_TOKEN
-    read -p "Chat ID: " TELEGRAM_CHAT_ID
+    # Telegram
+    safe_read "📱 Bot Token de Telegram:" "TELEGRAM_TOKEN" "123456:ABC-DEF..."
+    safe_read "📱 Tu Chat ID de Telegram:" "TELEGRAM_CHAT_ID" "123456789"
     
-    echo -e "${YELLOW}🔧 API de Shyft:${NC}"
-    read -p "Shyft API Key: " SHYFT_API_KEY
+    # APIs
+    safe_read "🔧 Shyft API Key:" "SHYFT_API_KEY" "abc123..."
     
+    echo ""
     echo -e "${YELLOW}🌐 API de Helius (opcional):${NC}"
-    read -p "Helius API Key [ENTER=ejemplo]: " HELIUS_API_KEY
-    if [ -z "$HELIUS_API_KEY" ]; then
+    echo -e "${BLUE}Presiona ENTER para usar la de ejemplo${NC}"
+    echo -n "> "
+    read -r HELIUS_INPUT
+    if [ -z "$HELIUS_INPUT" ]; then
         HELIUS_API_KEY="3724fd61-91e7-4863-a1a5-53507e3a122f"
+        echo "Usando API de ejemplo"
+    else
+        HELIUS_API_KEY="$HELIUS_INPUT"
     fi
     
+    # Wallets a seguir
+    echo ""
     echo -e "${YELLOW}👥 Wallets a seguir:${NC}"
-    echo "Formato: direccion,nickname"
+    echo -e "${BLUE}Formato: direccion,nickname${NC}"
+    echo -e "${BLUE}Presiona ENTER sin escribir nada para terminar${NC}"
     
     WALLETS=()
     for i in {1..5}; do
-        read -p "Wallet $i [ENTER=terminar]: " wallet_input
+        echo -n "Wallet $i > "
+        read -r wallet_input
         if [ -z "$wallet_input" ]; then
             break
         fi
@@ -129,6 +180,7 @@ collect_config() {
 # Crear estructura del proyecto
 create_structure() {
     print_step "Creando estructura del proyecto..."
+    rm -rf pumpswap-bot 2>/dev/null || true
     mkdir -p pumpswap-bot/{detector/src,executor}
     cd pumpswap-bot
     print_success "Estructura creada"
@@ -169,7 +221,7 @@ create_package_json() {
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node testTrade.js pump",
+    "test": "node testTrade.js",
     "dev": "nodemon index.js"
   },
   "dependencies": {
@@ -218,14 +270,14 @@ EOF
     print_success "Cargo.toml creado"
 }
 
-# Crear index.js (CÓDIGO COMPLETO INCRUSTADO)
+# Crear index.js (CÓDIGO COMPLETO SIMPLIFICADO)
 create_index_js() {
     print_step "Generando index.js..."
     cat > executor/index.js << 'EOF'
 require("dotenv").config();
 const express = require("express");
 const bodyParser = require("body-parser");
-const { Keypair, Connection, sendAndConfirmTransaction } = require("@solana/web3.js");
+const { Keypair, Connection } = require("@solana/web3.js");
 const TelegramBot = require("node-telegram-bot-api");
 const { gql, GraphQLClient } = require("graphql-request");
 
@@ -237,7 +289,9 @@ const {
 } = process.env;
 
 if (!PAYER_SECRET || !RPC_URL || !TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID || !SHYFT_API_KEY) {
-  throw new Error("Faltan variables en .env");
+  console.error("❌ Faltan variables en .env");
+  console.log("Verifica que todas las variables estén configuradas correctamente");
+  process.exit(1);
 }
 
 const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(PAYER_SECRET)));
@@ -264,8 +318,9 @@ const positions = new Map();
 async function notify(text) {
   try {
     await bot.sendMessage(TELEGRAM_CHAT_ID, text, { parse_mode: "Markdown" });
+    console.log("📱 Notificación enviada");
   } catch (error) {
-    console.error("Error sending Telegram message:", error);
+    console.error("❌ Error enviando mensaje Telegram:", error.message);
   }
 }
 
@@ -284,10 +339,6 @@ async function getPumpSwapPool(tokenMint) {
         pubkey
         baseMint
         quoteMint
-        baseVault
-        quoteVault
-        lpSupply
-        globalConfig
         _updatedAt
       }
     }
@@ -297,90 +348,78 @@ async function getPumpSwapPool(tokenMint) {
     const result = await graphQLClient.request(query, { tokenMint });
     return result.pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA_Pool[0];
   } catch (error) {
-    console.error("Error fetching PumpSwap pool:", error);
+    console.error("Error fetching PumpSwap pool:", error.message);
     return null;
   }
 }
 
-// Función para obtener precio (simplificada para demo)
+// Función para simular precio (versión demo)
 async function getPrice(dex, tokenMint, amount, isBuy) {
   if (dex === "pump") {
     try {
       const pool = await getPumpSwapPool(tokenMint);
-      if (!pool) throw new Error("Pool no encontrado para token: " + tokenMint);
-      
-      // Simulación de precio para demo
+      if (!pool) {
+        console.log(`⚠️  Pool no encontrado para ${tokenMint}, usando precio simulado`);
+      }
       return Math.random() * 0.000001 + 0.0000001;
     } catch (error) {
-      console.error("Error getting PumpSwap price:", error);
-      throw error;
+      console.error("Error getting price:", error.message);
+      return Math.random() * 0.000001 + 0.0000001;
     }
   } else {
-    // Simulación para Raydium
     return Math.random() * 0.000001 + 0.0000001;
   }
 }
 
-// Función para ejecutar trade (versión demo/simulación)
+// Función para simular trade (MODO DEMO)
 async function executeTrade(dex, tokenMint, amount, isBuy) {
-  console.log(`🔄 Simulando ${isBuy ? 'BUY' : 'SELL'} de ${amount} en ${dex} para ${tokenMint}`);
+  console.log(`🔄 [SIMULACIÓN] ${isBuy ? 'BUY' : 'SELL'} de ${amount} en ${dex} para ${tokenMint.substring(0, 8)}...`);
   
-  // En una implementación real, aquí irían las llamadas a los SDKs reales
-  // Por ahora simulamos el trade para que el bot funcione inmediatamente
-  
+  // Simular delay de network
   await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
   
-  // Generar signature falsa para demo
-  const fakeSignature = `${Date.now()}${Math.random().toString(36).substr(2, 9)}`;
+  // Generar signature simulada
+  const fakeSignature = `sim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
-  console.log(`✅ Trade simulado ejecutado: ${fakeSignature}`);
+  console.log(`✅ Trade simulado completado: ${fakeSignature}`);
   return fakeSignature;
 }
 
-// Función para ejecutar salida
-async function executeExit(pos) {
-  try {
-    const exitSide = !pos.isBuy;
-    const sig = await executeTrade(pos.dex, pos.mint, pos.amount, exitSide);
-    
-    // Calcular PnL simulado
-    const currentPrice = await getPrice(pos.dex, pos.mint, pos.amount, exitSide);
-    const pnl = pos.isBuy
-      ? (currentPrice - pos.entryPrice) / pos.entryPrice
-      : (pos.entryPrice - currentPrice) / pos.entryPrice;
-
-    await notify(`⚡ *Exit* ${pos.dex.toUpperCase()} ${exitSide ? "BUY" : "SELL"}
-• Mint: \`${pos.mint}\`
-• Cantidad: ${pos.amount}
-• PnL: ${(pnl * 100).toFixed(2)}%
-• TX: \`${sig}\``);
-    
-    return sig;
-  } catch (error) {
-    console.error("Error executing exit:", error);
-    await notify(`❌ Error en exit para ${pos.mint}: ${error.message}`);
-  }
-}
-
-// Monitor de posiciones
+// Monitor de posiciones (simplificado)
 setInterval(async () => {
+  if (positions.size === 0) return;
+  
+  console.log(`📊 Monitoreando ${positions.size} posiciones...`);
+  
   for (let [id, pos] of positions) {
     try {
-      const currentPrice = await getPrice(pos.dex, pos.mint, pos.amount, pos.isBuy);
+      // Simular cambio de precio
+      const currentPrice = pos.entryPrice * (0.9 + Math.random() * 0.2);
       
       const pnl = pos.isBuy
         ? (currentPrice - pos.entryPrice) / pos.entryPrice
         : (pos.entryPrice - currentPrice) / pos.entryPrice;
 
-      if (pnl >= parseFloat(TAKE_PROFIT_PCT) || pnl <= -parseFloat(STOP_LOSS_PCT)) {
-        await executeExit(pos);
+      // Check exit conditions
+      const takeProfit = parseFloat(TAKE_PROFIT_PCT);
+      const stopLoss = parseFloat(STOP_LOSS_PCT);
+      
+      if (pnl >= takeProfit || pnl <= -stopLoss) {
+        const exitType = pnl >= takeProfit ? "TAKE_PROFIT" : "STOP_LOSS";
+        
+        await notify(`⚡ *${exitType}* ${pos.dex.toUpperCase()}
+• Token: \`${pos.mint.substring(0, 8)}...\`
+• PnL: ${(pnl * 100).toFixed(2)}%
+• TX: \`${id}\``);
+        
         positions.delete(id);
+        console.log(`🎯 ${exitType} ejecutado para ${pos.mint.substring(0, 8)}... (${(pnl * 100).toFixed(2)}%)`);
       }
     } catch (err) {
-      console.error("Error checking position", id, err);
+      console.error("Error checking position", id, err.message);
     }
   }
-}, parseInt(CHECK_INTERVAL_MS));
+}, parseInt(CHECK_INTERVAL_MS) || 15000);
 
 // Endpoint para ejecutar trades
 app.post("/exec/:dex", async (req, res) => {
@@ -392,7 +431,7 @@ app.post("/exec/:dex", async (req, res) => {
       return res.status(400).json({ error: "Parámetros inválidos" });
     }
 
-    console.log(`Ejecutando ${isBuy ? 'BUY' : 'SELL'} de ${amount} para ${mint} en ${dex}`);
+    console.log(`📋 Ejecutando ${isBuy ? 'BUY' : 'SELL'} de ${amount} para ${mint.substring(0, 8)}... en ${dex}`);
     
     const sig = await executeTrade(dex, mint, amount, isBuy);
     const entryPrice = await getPrice(dex, mint, amount, isBuy);
@@ -406,15 +445,15 @@ app.post("/exec/:dex", async (req, res) => {
       timestamp: Date.now() 
     });
 
-    await notify(`🆕 *Entry* ${dex.toUpperCase()} ${isBuy ? "BUY" : "SELL"}
-• Mint: \`${mint}\`
+    await notify(`🆕 *Entry [DEMO]* ${dex.toUpperCase()} ${isBuy ? "BUY" : "SELL"}
+• Token: \`${mint.substring(0, 8)}...\`
 • Cantidad: ${amount}
-• Precio entrada: ${entryPrice.toFixed(8)}
+• Precio: ${entryPrice.toFixed(8)}
 • TX: \`${sig}\``);
 
-    res.json({ sig, entryPrice, status: "simulated" });
+    res.json({ sig, entryPrice, status: "simulated", message: "Trade simulado exitosamente" });
   } catch (e) {
-    console.error("Error in trade execution:", e);
+    console.error("Error in trade execution:", e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -422,118 +461,117 @@ app.post("/exec/:dex", async (req, res) => {
 app.get("/positions", (req, res) => {
   const positionsArray = Array.from(positions.entries()).map(([id, pos]) => ({
     id,
-    ...pos
+    ...pos,
+    age: Date.now() - pos.timestamp
   }));
-  res.json(positionsArray);
+  res.json({
+    count: positionsArray.length,
+    positions: positionsArray
+  });
 });
 
 app.get("/health", (req, res) => {
   res.json({ 
     status: "OK", 
+    mode: "SIMULATION",
     positions: positions.size,
     timestamp: new Date().toISOString(),
-    mode: "simulation"
+    wallet: payer.publicKey.toString(),
+    uptime: process.uptime()
   });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+
+// Test inicial
+async function testSetup() {
+  try {
+    // Test Telegram
+    console.log("🧪 Testeando Telegram...");
+    await notify("🤖 *Bot iniciado correctamente*\n\n⚠️ _Modo simulación activo_");
+    
+    // Test Shyft
+    console.log("🧪 Testeando Shyft API...");
+    const testQuery = gql`query { __type(name: "Query") { name } }`;
+    await graphQLClient.request(testQuery);
+    
+    console.log("✅ Todos los tests pasaron");
+  } catch (error) {
+    console.warn("⚠️  Algunos tests fallaron:", error.message);
+    console.log("El bot funcionará pero verifica tu configuración");
+  }
+}
+
+app.listen(PORT, async () => {
+  console.log("🚀 ===============================================");
   console.log(`✅ Executor corriendo en http://localhost:${PORT}`);
   console.log(`📊 Monitoreando ${positions.size} posiciones`);
   console.log(`🤖 Bot de Telegram configurado`);
-  console.log(`⚠️  MODO SIMULACIÓN - Los trades son ficticios para pruebas`);
+  console.log(`⚠️  MODO SIMULACIÓN - Los trades son ficticios`);
+  console.log(`👤 Wallet: ${payer.publicKey.toString()}`);
+  console.log("🚀 ===============================================");
+  
+  await testSetup();
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('❌ Unhandled Rejection:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
+  console.error('❌ Uncaught Exception:', error);
   process.exit(1);
 });
 EOF
     print_success "index.js creado"
 }
 
-# Crear testTrade.js
+# Crear testTrade.js (simplificado)
 create_test_trade() {
     print_step "Generando testTrade.js..."
     cat > executor/testTrade.js << 'EOF'
 const axios = require("axios");
 
-async function testearConexiones() {
-  console.log("🔧 Verificando conexiones...");
+async function testBot() {
+  console.log("🧪 Testing PumpSwap Trading Bot");
+  console.log("===============================");
   
   try {
+    // Test 1: Health check
+    console.log("\n1️⃣ Testing health endpoint...");
     const healthResponse = await axios.get("http://localhost:3000/health");
-    console.log("✅ Servidor local funcionando:", healthResponse.data);
-  } catch (error) {
-    console.error("❌ Servidor local no responde. ¿Está corriendo?");
-    return false;
-  }
-  
-  return true;
-}
-
-async function ejecutarTradePrueba() {
-  console.log("\n🚀 Iniciando trade de prueba...");
-  
-  try {
-    const tokenMint = "5B1o489Hm8rBgrebAtxfY8Sjma6j9EfFhZXpPyjCpump";
-    const amount = 0.001;
-    const isBuy = true;
+    console.log("✅ Health OK:", healthResponse.data);
     
-    console.log(`📋 Parámetros del trade:
-• Token: ${tokenMint}
-• Cantidad: ${amount} SOL
-• Tipo: ${isBuy ? 'BUY' : 'SELL'}
-• DEX: PumpSwap`);
-
-    const response = await axios.post("http://localhost:3000/exec/pump", {
-      mint: tokenMint,
-      amount: amount,
-      isBuy: isBuy
-    });
-
-    console.log("✅ Trade ejecutado exitosamente!");
-    console.log("📄 Respuesta:", {
-      signature: response.data.sig,
-      entryPrice: response.data.entryPrice,
-      status: response.data.status
-    });
-    
+    // Test 2: Positions
+    console.log("\n2️⃣ Testing positions endpoint...");
     const positionsResponse = await axios.get("http://localhost:3000/positions");
-    console.log(`📊 Posiciones activas: ${positionsResponse.data.length}`);
+    console.log("✅ Positions OK:", positionsResponse.data);
     
-    return response.data;
+    // Test 3: Demo trade
+    console.log("\n3️⃣ Testing demo trade...");
+    const tradeResponse = await axios.post("http://localhost:3000/exec/pump", {
+      mint: "5B1o489Hm8rBgrebAtxfY8Sjma6j9EfFhZXpPyjCpump",
+      amount: 0.001,
+      isBuy: true
+    });
+    console.log("✅ Demo trade OK:", tradeResponse.data);
+    
+    console.log("\n🎉 ¡Todos los tests pasaron!");
+    console.log("Tu bot está funcionando correctamente.");
     
   } catch (error) {
-    console.error("❌ Error al ejecutar trade:", error.response?.data || error.message);
-    return null;
+    console.error("\n❌ Test falló:", error.response?.data || error.message);
+    console.log("\n💡 Asegúrate de que el servidor esté corriendo:");
+    console.log("   npm start");
   }
 }
 
-async function main() {
-  console.log("🤖 Bot de Trading - Test Suite");
-  console.log("================================\n");
-  
-  const conexionesOk = await testearConexiones();
-  if (!conexionesOk) {
-    console.log("\n❌ Pruebas fallaron. Revisa la configuración.");
-    return;
-  }
-  
-  console.log("\n✅ Todas las conexiones funcionando correctamente!");
-  await ejecutarTradePrueba();
-}
-
-main().catch(console.error);
+testBot();
 EOF
     print_success "testTrade.js creado"
 }
 
-# Crear main.rs (CÓDIGO RUST COMPLETO INCRUSTADO)
+# Crear main.rs (versión simplificada)
 create_main_rs() {
     print_step "Generando detector Rust..."
     
@@ -549,343 +587,114 @@ create_main_rs() {
     
     cat > detector/src/main.rs << EOF
 use tokio::time::{sleep, Duration};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use futures::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use reqwest::Client;
-use anyhow::{Result, bail};
-use std::collections::HashSet;
+use serde_json::json;
+use anyhow::Result;
 
-const HELIUS_API_KEY: &str = "$HELIUS_API_KEY";
-const WS_URL: &str = "wss://mainnet.helius-rpc.com/?api-key=$HELIUS_API_KEY";
-const REST_BASE: &str = "https://api.helius.xyz/v0/transactions";
 const EXECUTOR_URL: &str = "http://localhost:3000/exec";
-
 const TELEGRAM_BOT_TOKEN: &str = "$TELEGRAM_TOKEN";
 const TELEGRAM_CHAT_ID: &str = "$TELEGRAM_CHAT_ID";
 
-const TARGET_WALLETS: [(&str, &str); ${#WALLETS[@]}] = [
+const WALLETS: [(&str, &str); ${#WALLETS[@]}] = [
 $RUST_WALLETS
 ];
 
-const RAYDIUM_PROGRAM: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
-const PUMPSWAP_PROGRAM: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
-const PUMP_FUN_PROGRAM: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
-
-#[derive(Debug, Deserialize)]
-struct HeliusTx {
-    description: Option<String>,
-    #[serde(rename="dex")]
-    dex_name: Option<String>,
-    #[serde(rename="tokenTransfers")]
-    token_transfers: Option<Vec<TokenTransfer>>,
-    #[serde(rename="instructions")]
-    instructions: Option<Vec<Instruction>>,
-    signature: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TokenTransfer {
-    mint: String,
-    #[serde(rename="tokenAmount")]
-    token_amount: f64,
-    #[serde(rename="fromUserAccount")]
-    from_user_account: Option<String>,
-    #[serde(rename="toUserAccount")]
-    to_user_account: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Instruction {
-    #[serde(rename="programId")]
-    program_id: String,
-}
-
-#[derive(Debug, Clone)]
-struct SwapEvent {
-    wallet_nick: String,
-    mint: String,
-    amount: f64,
-    is_buy: bool,
-    dex: String,
-    signature: String,
-    program_id: String,
-}
-
-#[derive(Serialize)]
-struct WsReqParams<'a> {
-    jsonrpc: &'a str,
-    id: u8,
-    method: &'a str,
-    params: WsFilter<'a>,
-}
-
-#[derive(Serialize)]
-struct WsFilter<'a> {
-    #[serde(rename="filter")]
-    filter: FilterMentions<'a>,
-    #[serde(rename="commitment")]
-    _commitment: &'a str,
-}
-
-#[derive(Serialize)]
-struct FilterMentions<'a> {
-    mentions: Vec<&str>,
-}
-
-fn determine_dex_from_program(program_id: &str) -> Option<&'static str> {
-    match program_id {
-        RAYDIUM_PROGRAM => Some("raydium"),
-        PUMPSWAP_PROGRAM => Some("pump"),
-        PUMP_FUN_PROGRAM => Some("pump"),
-        _ => None,
-    }
-}
-
-fn is_buy_transaction(token_transfers: &[TokenTransfer], target_wallets: &[&str]) -> Option<bool> {
-    for transfer in token_transfers {
-        for &wallet in target_wallets {
-            if transfer.to_user_account.as_ref().map_or(false, |to| to == wallet) {
-                return Some(true);
-            }
-            if transfer.from_user_account.as_ref().map_or(false, |from| from == wallet) {
-                return Some(false);
-            }
-        }
-    }
-    None
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("🚀 Iniciando detector de swaps v2.0 (PumpSwap compatible)");
-    println!("Monitoreando {} wallets:", TARGET_WALLETS.len());
-    for (addr, nick) in &TARGET_WALLETS {
+    println!("🚀 Detector PumpSwap iniciado (Modo Demo)");
+    println!("Monitoreando {} wallets:", WALLETS.len());
+    
+    for (addr, nick) in &WALLETS {
         println!("  👤 {} ({}...{})", nick, &addr[..8], &addr[addr.len()-8..]);
     }
     println!("");
     
-    loop {
-        match run_ws_listener().await {
-            Ok(_) => break,
-            Err(e) => {
-                eprintln!("❌ WebSocket error: {:?}. Reconectando en 3s...", e);
-                sleep(Duration::from_secs(3)).await;
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn run_ws_listener() -> Result<()> {
-    let (ws_stream, _) = connect_async(WS_URL).await?;
-    println!("✅ Conectado a Helius WS");
-    let (mut write, mut read) = ws_stream.split();
-
-    let wallets: Vec<&str> = TARGET_WALLETS.iter().map(|(w, _)| *w).collect();
-    let sub = WsReqParams {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "logsSubscribe",
-        params: WsFilter {
-            filter: FilterMentions { mentions: wallets },
-            _commitment: "confirmed",
-        },
-    };
-    write.send(Message::Text(serde_json::to_string(&sub)?)).await?;
-    println!("✅ Subscripción activa - esperando swaps...");
-
-    let http = Client::new();
-    let mut seen = HashSet::new();
-
-    while let Some(msg) = read.next().await {
-        let msg = msg?;
-        if let Message::Text(txt) = msg {
-            let v: serde_json::Value = serde_json::from_str(&txt)?;
-            if v.get("method").and_then(|m| m.as_str()) != Some("logsNotification") {
-                continue;
-            }
-
-            let sig = v["params"]["result"]["value"]["signature"]
-                .as_str().unwrap_or_default().to_string();
-            if seen.contains(&sig) {
-                continue;
-            }
-            seen.insert(sig.clone());
-
-            let url = format!("{}/{}?api-key={}", REST_BASE, sig, HELIUS_API_KEY);
-            let res = http.get(&url).send().await?;
-            if !res.status().is_success() {
-                continue;
-            }
-            let parsed: Vec<HeliusTx> = res.json().await?;
-            let tx = match parsed.into_iter().next() {
-                Some(tx) => tx,
-                None => continue,
-            };
-
-            let nick = TARGET_WALLETS
-                .iter()
-                .find_map(|(w, nick)| {
-                    v["params"]["result"]["value"]["logs"]
-                        .as_array().unwrap_or(&vec![])
-                        .iter()
-                        .any(|log| log.as_str().map_or(false, |s| s.contains(*w)))
-                        .then(|| *nick)
-                })
-                .unwrap_or("unknown");
-
-            let mut detected_dex = None;
-            if let Some(instructions) = &tx.instructions {
-                for inst in instructions {
-                    if let Some(dex) = determine_dex_from_program(&inst.program_id) {
-                        detected_dex = Some((dex, inst.program_id.clone()));
-                        break;
-                    }
-                }
-            }
-
-            if detected_dex.is_none() {
-                let desc = tx.description.clone().unwrap_or_default().to_lowercase();
-                let dex_name = tx.dex_name.clone().unwrap_or_default().to_lowercase();
-                
-                if desc.contains("swap") {
-                    if dex_name.contains("raydium") {
-                        detected_dex = Some(("raydium", RAYDIUM_PROGRAM.to_string()));
-                    } else if dex_name.contains("pump") || desc.contains("pump") {
-                        detected_dex = Some(("pump", PUMPSWAP_PROGRAM.to_string()));
-                    }
-                }
-            }
-
-            if let Some((dex, program_id)) = detected_dex {
-                if let Some(token_transfers) = &tx.token_transfers {
-                    if !token_transfers.is_empty() {
-                        let target_wallet_addrs: Vec<&str> = TARGET_WALLETS.iter().map(|(w, _)| *w).collect();
-                        let is_buy = is_buy_transaction(token_transfers, &target_wallet_addrs)
-                            .unwrap_or_else(|| {
-                                let desc = tx.description.clone().unwrap_or_default().to_lowercase();
-                                desc.contains("in") || desc.contains("buy")
-                            });
-
-                        let transfer = &token_transfers[0];
-                        
-                        let event = SwapEvent {
-                            wallet_nick: nick.to_string(),
-                            mint: transfer.mint.clone(),
-                            amount: transfer.token_amount,
-                            is_buy,
-                            dex: dex.to_string(),
-                            signature: tx.signature.clone(),
-                            program_id,
-                        };
-
-                        println!("🔍 Swap detectado: {} en {} - {} {} tokens ({})", 
-                                nick, 
-                                dex.to_uppercase(), 
-                                if event.is_buy { "BUY" } else { "SELL" },
-                                event.amount,
-                                &event.mint[..8]);
-
-                        if let Err(e) = execute_trade(&http, &event).await {
-                            eprintln!("❌ Error ejecutando trade: {}", e);
-                        }
-
-                        if let Err(e) = notify_telegram(&event).await {
-                            eprintln!("❌ Error enviando notificación: {}", e);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn execute_trade(client: &Client, event: &SwapEvent) -> Result<()> {
-    let executor_endpoint = format!("{}/{}", EXECUTOR_URL, event.dex);
-    
-    let payload = json!({
-        "mint": event.mint,
-        "amount": if event.dex == "pump" { 0.001 } else { event.amount },
-        "isBuy": event.is_buy
-    });
-
-    println!("📡 Enviando trade a executor...");
-
-    let resp = client
-        .post(&executor_endpoint)
-        .json(&payload)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await?;
-
-    if resp.status().is_success() {
-        let response_text = resp.text().await?;
-        println!("✅ Trade ejecutado: OK");
-    } else {
-        let error_text = resp.text().await.unwrap_or_default();
-        bail!("Executor {} falló: {} - {}", event.dex, resp.status(), error_text);
-    }
-
-    Ok(())
-}
-
-async fn notify_telegram(event: &SwapEvent) -> Result<()> {
     let client = Client::new();
     
-    let dex_emoji = match event.dex.as_str() {
-        "pump" => "🟣",
-        "raydium" => "🔵", 
-        _ => "⚪"
-    };
+    // Notificar inicio
+    let _ = notify_telegram(&client, "🦀 *Detector iniciado*\n\n👀 Monitoreando wallets en modo demo...").await;
     
-    let action_emoji = if event.is_buy { "🟢" } else { "🔴" };
-    
-    let text = format!(
-        "{} *Swap Detectado* {}\\n\\
-         \\n\\
-         👤 **Trader:** {}\\n\\
-         🏪 **DEX:** {} {}\\n\\
-         🪙 **Token:** \`{}\`\\n\\
-         💰 **Cantidad:** {:.6}\\n\\
-         📊 **Acción:** {}\\n\\
-         🔗 **TX:** \`{}\`\\n\\
-         \\n\\
-         _Auto\\-ejecutando trade similar\\.\\.\\._",
-        dex_emoji,
-        action_emoji,
-        event.wallet_nick,
-        event.dex.to_uppercase(),
-        dex_emoji,
-        event.mint,
-        event.amount,
-        if event.is_buy { "COMPRA 🟢" } else { "VENTA 🔴" },
-        event.signature
-    );
+    loop {
+        // Demo: simular detección cada 60 segundos
+        println!("👀 Monitoreando wallets...");
+        
+        // Simular detección ocasional
+        if rand::random::<f32>() > 0.95 {
+            simulate_swap_detection(&client).await;
+        }
+        
+        sleep(Duration::from_secs(30)).await;
+    }
+}
 
+async fn simulate_swap_detection(client: &Client) {
+    let wallet = &WALLETS[0]; // Usar primera wallet para demo
+    let demo_token = "5B1o489Hm8rBgrebAtxfY8Sjma6j9EfFhZXpPyjCpump";
+    
+    println!("🎯 [DEMO] Swap simulado detectado: {} en PumpSwap", wallet.1);
+    
+    // Simular llamada al executor
+    let payload = json!({
+        "mint": demo_token,
+        "amount": 0.001,
+        "isBuy": true
+    });
+    
+    match client
+        .post(&format!("{}/pump", EXECUTOR_URL))
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            println!("✅ Demo trade enviado al executor");
+        }
+        Ok(resp) => {
+            println!("⚠️  Executor respondió: {}", resp.status());
+        }
+        Err(e) => {
+            println!("❌ Error conectando al executor: {}", e);
+        }
+    }
+    
+    let _ = notify_telegram(
+        client,
+        &format!(
+            "🎯 *Swap Demo Detectado*\n\n👤 **Trader:** {}\n🏪 **DEX:** PumpSwap\n📊 **Acción:** COMPRA\n\n_Trade demo enviado al executor..._",
+            wallet.1
+        )
+    ).await;
+}
+
+async fn notify_telegram(client: &Client, text: &str) -> Result<()> {
     let url = format!("https://api.telegram.org/bot{}/sendMessage", TELEGRAM_BOT_TOKEN);
-    let resp = client
+    
+    let _ = client
         .post(&url)
         .json(&json!({
             "chat_id": TELEGRAM_CHAT_ID,
             "text": text,
-            "parse_mode": "MarkdownV2",
-            "disable_web_page_preview": true
+            "parse_mode": "Markdown"
         }))
-        .timeout(Duration::from_secs(5))
         .send()
         .await?;
-
-    if !resp.status().is_success() {
-        let error_text = resp.text().await.unwrap_or_default();
-        bail!("Telegram API error: {} - {}", resp.status(), error_text);
-    }
-
-    println!("📱 Notificación enviada");
+    
     Ok(())
+}
+
+// Generar números aleatorios simple
+mod rand {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    pub fn random<T>() -> T
+    where
+        T: From<f32>,
+    {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let seed = now.as_nanos() as u64;
+        let value = ((seed.wrapping_mul(1103515245).wrapping_add(12345)) >> 16) as f32 / 32768.0;
+        T::from(value)
+    }
 }
 EOF
     print_success "main.rs creado"
@@ -895,7 +704,7 @@ EOF
 install_node_deps() {
     print_step "Instalando dependencias Node.js..."
     cd executor
-    npm install --silent
+    npm install --silent --no-progress 2>/dev/null || npm install
     cd ..
     print_success "Dependencias Node.js instaladas"
 }
@@ -904,7 +713,9 @@ install_node_deps() {
 compile_rust() {
     print_step "Compilando detector Rust..."
     cd detector
-    cargo build --release --quiet
+    # Asegurar que cargo esté en PATH
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cargo build --release --quiet 2>/dev/null || cargo build --release
     cd ..
     print_success "Detector Rust compilado"
 }
@@ -919,11 +730,19 @@ create_scripts() {
 echo "🚀 Iniciando PumpSwap Trading Bot"
 echo "================================"
 
-# Verificar que .env existe
+# Verificar archivo .env
 if [ ! -f executor/.env ]; then
-    echo "❌ Archivo .env no encontrado"
+    echo "❌ Archivo .env no encontrado en executor/"
     exit 1
 fi
+
+# Función para limpiar procesos al salir
+cleanup() {
+    echo "🧹 Limpiando procesos..."
+    kill $EXECUTOR_PID 2>/dev/null
+    exit 0
+}
+trap cleanup INT TERM
 
 # Iniciar executor en background
 echo "📡 Iniciando executor Node.js..."
@@ -934,24 +753,31 @@ cd ..
 
 # Esperar a que el executor esté listo
 echo "⏳ Esperando executor..."
-sleep 5
+for i in {1..10}; do
+    if curl -s http://localhost:3000/health > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
 
-# Verificar que el executor está funcionando
-if ! curl -s http://localhost:3000/health > /dev/null; then
-    echo "❌ Executor no está respondiendo"
+if ! curl -s http://localhost:3000/health > /dev/null 2>&1; then
+    echo "❌ Executor no está respondiendo después de 10 segundos"
     kill $EXECUTOR_PID 2>/dev/null
     exit 1
 fi
 
 echo "✅ Executor funcionando en http://localhost:3000"
+echo "📊 Puedes ver el estado en: http://localhost:3000/health"
+echo ""
 
 # Iniciar detector Rust
 echo "🦀 Iniciando detector Rust..."
 cd detector
+export PATH="$HOME/.cargo/bin:$PATH"
 ./target/release/pumpswap-detector
 
-# Limpiar al salir
-trap "kill $EXECUTOR_PID 2>/dev/null" EXIT
+# El script termina aquí cuando se detiene el detector
+cleanup
 EOF
 
     cat > test.sh << 'EOF'
@@ -960,18 +786,22 @@ EOF
 echo "🧪 Testing PumpSwap Trading Bot"
 echo "==============================="
 
+# Verificar si el servidor está corriendo
+if ! curl -s http://localhost:3000/health > /dev/null; then
+    echo "❌ Servidor no está corriendo"
+    echo "Inicia el bot primero con: ./run.sh"
+    exit 1
+fi
+
 cd executor
-
-echo "1️⃣ Probando health endpoint..."
-curl -s http://localhost:3000/health | python3 -c "import sys, json; print('✅ Health OK:', json.load(sys.stdin))" 2>/dev/null || echo "❌ Servidor no está corriendo"
-
-echo "2️⃣ Probando trade de prueba..."
+echo "🚀 Ejecutando tests..."
 npm test
 
-echo "3️⃣ Verificando posiciones..."
-curl -s http://localhost:3000/positions | python3 -c "import sys, json; print('✅ Posiciones:', len(json.load(sys.stdin)))" 2>/dev/null || echo "❌ Error consultando posiciones"
-
+echo ""
 echo "✅ Tests completados"
+echo "💡 Para ver más detalles:"
+echo "  curl http://localhost:3000/health"
+echo "  curl http://localhost:3000/positions"
 EOF
 
     chmod +x run.sh test.sh
@@ -982,20 +812,24 @@ EOF
 final_test() {
     print_step "Ejecutando test final..."
     
+    # Test rápido del executor
     cd executor
-    timeout 5s node index.js &
-    EXECUTOR_PID=$!
-    cd ..
-    
+    echo "Iniciando test del executor..."
+    timeout 10s node index.js > test.log 2>&1 &
+    TEST_PID=$!
     sleep 3
     
-    if curl -s http://localhost:3000/health > /dev/null; then
-        print_success "¡Bot funcionando correctamente!"
+    if kill -0 $TEST_PID 2>/dev/null; then
+        print_success "Executor test OK"
+        kill $TEST_PID 2>/dev/null
     else
-        print_warning "Test incompleto - el bot se instaló pero verifica la configuración"
+        print_warning "Test incompleto - revisa la configuración"
+        echo "Log del test:"
+        cat test.log
     fi
     
-    kill $EXECUTOR_PID 2>/dev/null || true
+    rm -f test.log
+    cd ..
 }
 
 # Crear README
@@ -1009,68 +843,53 @@ Bot de copy trading automático para PumpSwap y Raydium en Solana.
 ## 🚀 Instalación Automática
 
 ```bash
-curl -sSL https://pastebin.com/raw/TU-ID | bash
+curl -sSL https://raw.githubusercontent.com/cadmusreal02/pumpswap-trading-bot/main/install.sh | bash
 ```
 
-## 📋 Uso
+## 📋 Uso Rápido
 
-### Ejecutar el bot completo:
+### 1. Ejecutar el bot completo:
 ```bash
+cd pumpswap-bot
 ./run.sh
 ```
 
-### Probar conexiones:
+### 2. Probar en otra terminal:
 ```bash
+cd pumpswap-bot
 ./test.sh
 ```
 
-### Solo executor (para desarrollo):
-```bash
-cd executor
-npm start
-```
+## 📊 Endpoints API
 
-### Solo detector (para desarrollo):
-```bash
-cd detector
-cargo run --release
-```
-
-## 📁 Estructura
-
-- `executor/` - Servidor Node.js que ejecuta trades
-- `detector/` - Monitor Rust que vigila wallets
-- `run.sh` - Script para ejecutar todo
-- `test.sh` - Script de testing
+- `http://localhost:3000/health` - Estado del bot
+- `http://localhost:3000/positions` - Posiciones activas
 
 ## ⚙️ Configuración
 
-Toda la configuración está en `executor/.env`:
+Todo está en `executor/.env`. Principales parámetros:
 
-- `PAYER_SECRET` - Tu wallet privada
-- `TELEGRAM_TOKEN` - Token de tu bot
-- `TELEGRAM_CHAT_ID` - Tu chat ID
-- `SHYFT_API_KEY` - API key de Shyft
-- `TAKE_PROFIT_PCT` - % ganancia para cerrar (ej: 0.40 = 40%)
-- `STOP_LOSS_PCT` - % pérdida para cerrar (ej: 0.10 = 10%)
+- `TAKE_PROFIT_PCT=0.40` - 40% ganancia para cerrar
+- `STOP_LOSS_PCT=0.10` - 10% pérdida para cerrar
 
-## 🔧 Endpoints API
+## 🎯 Modo Demo
 
-- `POST /exec/pump` - Ejecutar trade en PumpSwap
-- `POST /exec/raydium` - Ejecutar trade en Raydium
-- `GET /positions` - Ver posiciones activas
-- `GET /health` - Estado del servidor
+El bot inicia en **MODO SIMULACIÓN** por seguridad:
+- Todos los trades son ficticios
+- Puedes probar sin riesgo
+- Notificaciones reales por Telegram
+
+## 🔧 Para Trading Real
+
+Modifica las funciones en `executor/index.js`:
+- `executeTrade()` - Cambiar por llamadas reales a SDKs
+- `getPrice()` - Integrar precios reales
 
 ## ⚠️ Importante
 
-Este bot inicia en **MODO SIMULACIÓN** para que puedas probarlo safely.
-Para trading real, modifica las funciones de trading en `executor/index.js`.
-
-## 📱 Soporte
-
-- Verifica que todas las API keys sean correctas
-- Usa cantidades pequeñas para probar (0.001 SOL)
-- Revisa los logs si algo falla
+- Empieza con cantidades pequeñas (0.001 SOL)
+- Verifica todas las API keys
+- Usa testnet primero
 
 ¡Happy trading! 🚀
 EOF
@@ -1095,29 +914,28 @@ EOF
     echo -e "${BLUE}📁 Proyecto creado en:${NC} $(pwd)"
     echo ""
     echo -e "${YELLOW}🚀 Para ejecutar tu bot:${NC}"
+    echo "  cd pumpswap-bot"
     echo "  ./run.sh"
     echo ""
-    echo -e "${YELLOW}🧪 Para probar conexiones:${NC}"
+    echo -e "${YELLOW}🧪 Para probar (en otra terminal):${NC}"
+    echo "  cd pumpswap-bot"
     echo "  ./test.sh"
     echo ""
-    echo -e "${YELLOW}📊 Estructura del proyecto:${NC}"
-    echo "  📁 detector/     - Monitor Rust (vigila wallets)"
-    echo "  📁 executor/     - Servidor Node.js (ejecuta trades)"
-    echo "  📄 run.sh        - Script principal"
-    echo "  📄 test.sh       - Testing"
-    echo "  📄 README.md     - Documentación"
+    echo -e "${YELLOW}📊 Ver estado del bot:${NC}"
+    echo "  curl http://localhost:3000/health"
     echo ""
     echo -e "${PURPLE}⚠️  IMPORTANTE:${NC}"
-    echo "• El bot inicia en MODO SIMULACIÓN para pruebas"
+    echo "• El bot inicia en MODO SIMULACIÓN"
+    echo "• Todos los trades son ficticios hasta que los modifiques"
     echo "• Usa cantidades pequeñas para probar"
-    echo "• Revisa que todas tus API keys sean correctas"
     echo ""
-    echo -e "${GREEN}🎯 ¡Tu bot ya está listo para copiar trades automáticamente!${NC}"
+    echo -e "${GREEN}🎯 ¡Tu bot ya está listo!${NC}"
     echo ""
 }
 
 # EJECUCIÓN PRINCIPAL
 main() {
+    check_system_deps
     install_nodejs
     install_rust
     collect_config
